@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Papa Call</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100dvh; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    user-select: none; -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  @keyframes bgShift {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  #field {
+    position: fixed; inset: 0;
+    background: linear-gradient(135deg, #da256a, #3c9eb9, #d6e949, #3c9eb9, #da256a);
+    background-size: 400% 400%;
+    animation: bgShift 22s ease-in-out infinite;
+  }
+
+  .bubble {
+    position: absolute;
+    border-radius: 50%;
+    will-change: transform;
+    touch-action: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 5px;
+  }
+
+  .bubble-inner {
+    position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+    background:
+      radial-gradient(circle at 35% 35%, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.06) 30%, transparent 60%),
+      radial-gradient(circle at 65% 65%, rgba(0,0,0,0.06) 0%, transparent 40%);
+  }
+
+  .bubble-content {
+    position: relative; z-index: 1; pointer-events: none;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+  }
+
+  .bubble-content span {
+    color: white; font-weight: 600; font-size: 15px; letter-spacing: 0.3px;
+  }
+
+  .bubble-content img {
+    border-radius: 50%; object-fit: cover;
+    border: 2px solid rgba(255,255,255,0.55);
+  }
+
+  .bar-btn {
+    position: fixed;
+    bottom: calc(env(safe-area-inset-bottom) + 18px);
+    width: 58px; height: 58px; border-radius: 50%;
+    background: #141414; border: 1px solid #2a2a2a;
+    color: #f5f5f5; cursor: pointer; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0; line-height: 1;
+  }
+
+  #settingsPanel {
+    position: fixed; inset: 0; z-index: 100;
+    background: #0d0d0d;
+    transform: translateY(100%);
+    transition: transform 0.32s cubic-bezier(.4,0,.2,1);
+    display: flex; flex-direction: column;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow-y: auto;
+  }
+  #settingsPanel.open { transform: translateY(0); }
+
+  .settings-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px 8px;
+    border-bottom: 1px solid #1e1e1e;
+  }
+  .settings-header h2 { margin: 0; color: #f5f5f5; font-size: 18px; font-weight: 700; }
+  .settings-close {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: #1e1e1e; border: 1px solid #2a2a2a;
+    color: #888; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .settings-section { padding: 20px 24px 8px; }
+  .settings-section-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.8px;
+    color: #555; text-transform: uppercase; margin-bottom: 12px;
+  }
+
+  .settings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #141414; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 8px;
+    border: 1px solid #1e1e1e;
+  }
+  .settings-row-left { display: flex; align-items: center; gap: 12px; }
+  .settings-row-icon {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .settings-row-label { color: #d0d0d0; font-size: 15px; font-weight: 500; }
+  .settings-row-sub   { color: #555; font-size: 12px; margin-top: 2px; }
+
+  .toggle { position: relative; width: 48px; height: 28px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute; inset: 0; border-radius: 14px;
+    background: #2a2a2a; cursor: pointer; transition: background 0.2s;
+  }
+  .toggle input:checked + .toggle-track { background: #3c9eb9; }
+  .toggle-thumb {
+    position: absolute; top: 3px; left: 3px;
+    width: 22px; height: 22px; border-radius: 50%; background: #f5f5f5;
+    transition: transform 0.2s cubic-bezier(.4,0,.2,1); pointer-events: none;
+  }
+  .toggle input:checked ~ .toggle-thumb { transform: translateX(20px); }
+
+  .settings-coming-soon {
+    background: #141414; border-radius: 14px;
+    padding: 14px 16px; margin-bottom: 8px;
+    border: 1px solid #1e1e1e;
+    color: #3a3a3a; font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .settings-coming-soon svg { flex-shrink: 0; }
+
+  .settings-add-form {
+    background: #141414; border-radius: 14px;
+    padding: 14px 16px; margin-top: 4px;
+    border: 1px solid #1e1e1e;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .settings-add-form input {
+    background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 10px;
+    color: #f5f5f5; font-size: 14px; padding: 10px 12px; outline: none;
+    font-family: inherit; width: 100%;
+  }
+  .settings-add-form input::placeholder { color: #444; }
+  .settings-add-btn {
+    background: #3c9eb9; border: none; border-radius: 10px;
+    color: #0d0d0d; font-size: 14px; font-weight: 600;
+    padding: 10px; cursor: pointer; font-family: inherit;
+  }
+  .settings-add-btn:disabled { background: #1e1e1e; color: #444; cursor: default; }
+  .settings-add-form select {
+    background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 10px;
+    color: #f5f5f5; font-size: 14px; padding: 10px 12px; outline: none;
+    font-family: inherit; width: 100%; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center; background-size: 16px;
+  }
+  .settings-add-form select option { background: #1a1a1a; }
+  .settings-add-form select option:disabled { color: #444; }
+
+  .gravity-sub {
+    display: flex; align-items: center; gap: 8px;
+    padding-top: 10px; border-top: 1px solid #1e1e1e; margin-top: 2px;
+  }
+  .gravity-sub input[type=range] {
+    -webkit-appearance: none; appearance: none; flex: 1;
+    height: 4px; background: #2a2a2a; border-radius: 2px; outline: none;
+  }
+  .gravity-sub input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px;
+    border-radius: 50%; background: #3c9eb9; cursor: pointer;
+  }
+  .gravity-label { color: #555; font-size: 11px; flex-shrink: 0; width: 46px; }
+  .gravity-val   { color: #888; font-size: 12px; width: 26px; text-align: right; flex-shrink: 0; }
+  .gravity-rand  { color: #555; font-size: 11px; flex-shrink: 0; }
+
+  #photoOverlay {
+    display: none; position: fixed; inset: 0;
+    background: #000; z-index: 9999;
+    align-items: center; justify-content: center;
+  }
+  #photoOverlay.active { display: flex; }
+  #photoOverlay img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  #closePhoto {
+    position: absolute;
+    top: calc(env(safe-area-inset-top) + 16px);
+    right: calc(env(safe-area-inset-right) + 16px);
+    width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(255,255,255,0.25); border: none;
+    color: white; font-size: 22px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="field"></div>
+
+<button class="bar-btn" style="left:18px;font-size:20px" onclick="location.reload()">↻</button>
+<button class="bar-btn" style="right:18px" onclick="openSettings()">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+  </svg>
+</button>
+
+<div id="settingsPanel">
+  <div class="settings-header">
+    <h2>Controls</h2>
+    <button class="settings-close" onclick="closeSettings()">✕</button>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-label">Bubbles</div>
+    <div id="bubbleToggles"></div>
+    <div class="settings-add-form">
+      <input id="addLabel" type="text" placeholder="Label (e.g. Call Mum)" maxlength="20">
+      <select id="addType">
+        <option value="" disabled selected>What does it do?</option>
+        <option value="whatsapp">📞 WhatsApp call</option>
+        <option value="image">🖼 Show a picture</option>
+        <option value="video">▶ Embedded video</option>
+        <option value="camera">📷 Open camera</option>
+        <option value="pdf">📄 PDF / e-book / music / recipe</option>
+        <option value="games" disabled>🎮 Games — coming soon</option>
+      </select>
+      <div id="addDetailWrap" style="display:none"></div>
+      <button class="settings-add-btn" id="addBubbleBtn" disabled>Add bubble</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-label">Duration &amp; Access</div>
+    <div class="settings-coming-soon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3a3a3a" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Active hours — coming soon
+    </div>
+    <div class="settings-coming-soon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3a3a3a" stroke-width="1.6"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Usage limits per day / week — coming soon
+    </div>
+    <div class="settings-coming-soon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3a3a3a" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Curfew periods — coming soon
+    </div>
+    <div class="settings-coming-soon">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3a3a3a" stroke-width="1.6"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+      Reactivation frequency — coming soon
+    </div>
+  </div>
+</div>
+
+<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+
+<div id="photoOverlay">
+  <img id="fullImg" src="" alt="">
+  <button id="closePhoto" onclick="document.getElementById('photoOverlay').classList.remove('active')">✕</button>
+</div>
+
+<script>
+const PHOTO_KEY    = 'papa_proof_photo';
+const SETTINGS_KEY = 'papa-settings-v1';
+const CUSTOM_KEY   = 'papa-custom-v1';
+const DAMPING      = 0.965;
+const COL_DAMP     = 0.6;
+const CEIL         = 2;
+const DRAG_THRESHOLD = 6;
+
+let dragState = null;
+
+const CFGS = [
+  { id:'call',     label:'Call Papa',     size:180, color:'#e8253d', buoy:1.6 },
+  { id:'florence', label:'Call Florence', size:150, color:'#a855f7', buoy:1.4 },
+  { id:'camera',   label:'Camera',        size: 90, color:'#3c9eb9', buoy:1.3 },
+  { id:'thumb',    label:'Photo',         size: 90, color:'#da256a', buoy:1.1 },
+];
+
+const BUILTIN_IDS = ['call','florence','camera','thumb'];
+
+// ── Custom bubbles ──
+function getCustomBubbles() {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_KEY)) || []; } catch(_) { return []; }
+}
+function saveCustomBubbles(arr) {
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(arr));
+}
+
+// ── Settings ──
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch(_) { return {}; }
+}
+function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
+
+function isBubbleEnabled(id) {
+  const s = loadSettings();
+  if (s[id]?.deleted) return false;
+  return s[id]?.enabled !== false;
+}
+function deleteBubble(id) {
+  const s = loadSettings();
+  if (!s[id]) s[id] = {};
+  s[id].deleted = true;
+  s[id].enabled = false;
+  saveSettings(s);
+  if (!BUILTIN_IDS.includes(id)) {
+    const idx = CFGS.findIndex(c => c.id === id);
+    if (idx !== -1) CFGS.splice(idx, 1);
+    saveCustomBubbles(getCustomBubbles().filter(c => c.id !== id));
+  }
+  syncField();
+  buildToggles();
+}
+function restoreAll() {
+  const s = loadSettings();
+  CFGS.forEach(c => { if (s[c.id]) { delete s[c.id].deleted; s[c.id].enabled = true; } });
+  saveSettings(s);
+  syncField();
+  buildToggles();
+}
+
+function getGravity(id) {
+  const s = loadSettings();
+  if (s[id]?.gravity !== undefined) return s[id].gravity;
+  const cfg = CFGS.find(c => c.id === id);
+  return cfg ? Math.round((cfg.buoy / 2) * 100) : 65;
+}
+function isFluctuating(id) {
+  return !!loadSettings()[id]?.fluctuate;
+}
+
+function openSettings()  { document.getElementById('settingsPanel').classList.add('open'); }
+function closeSettings() { document.getElementById('settingsPanel').classList.remove('open'); }
+
+function actionIcon(action) {
+  if (action === 'image')  return '<path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM5 17l3.5-4.5 2.5 3.01L14.5 11 19 17H5Z"/>';
+  if (action === 'video')  return '<polygon points="5 3 19 12 5 21 5 3"/>';
+  if (action === 'camera') return '<path d="M12 15.2A3.2 3.2 0 1 1 15.2 12 3.2 3.2 0 0 1 12 15.2ZM20 4h-3.17L15 2H9L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"/>';
+  if (action === 'pdf')    return '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm0 1v5h5M9 13h6M9 17h6M9 9h1"/>';
+  return '<path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2Z"/>';
+}
+
+function iconPath(id) {
+  if (id === 'camera') return '<path d="M12 15.2A3.2 3.2 0 1 1 15.2 12 3.2 3.2 0 0 1 12 15.2ZM20 4h-3.17L15 2H9L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"/>';
+  if (id === 'thumb')  return '<path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM5 17l3.5-4.5 2.5 3.01L14.5 11 19 17H5Z"/>';
+  return '<path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2Z"/>';
+}
+
+function buildToggles() {
+  const container = document.getElementById('bubbleToggles');
+  container.innerHTML = '';
+  const s = loadSettings();
+  const hasDeleted = CFGS.some(c => s[c.id]?.deleted);
+
+  CFGS.forEach(cfg => {
+    const deleted = !!s[cfg.id]?.deleted;
+    const enabled = !deleted && s[cfg.id]?.enabled !== false;
+    const grav = getGravity(cfg.id);
+    const fluct = isFluctuating(cfg.id);
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    row.style.cssText += ';flex-direction:column;align-items:stretch;';
+    row.style.opacity = deleted ? '0.4' : '1';
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="settings-row-left">
+          <div class="settings-row-icon" style="background:${cfg.color}22">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="${deleted ? '#555' : cfg.color}">${cfg.action ? actionIcon(cfg.action) : iconPath(cfg.id)}</svg>
+          </div>
+          <div>
+            <div class="settings-row-label">${cfg.label}</div>
+            <div class="settings-row-sub">${deleted ? 'Deleted' : enabled ? 'Active' : 'Hidden'}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${!deleted ? `<label class="toggle">
+            <input type="checkbox" ${enabled ? 'checked' : ''} data-id="${cfg.id}">
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>` : ''}
+          <button data-del="${cfg.id}" style="background:none;border:none;padding:4px;cursor:pointer;opacity:${deleted?'0.3':'0.6'}" ${deleted?'disabled':''}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ff4444" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      ${!deleted ? `<div class="gravity-sub">
+        <span class="gravity-label">Gravity</span>
+        <input type="range" min="0" max="100" value="${grav}" data-grav="${cfg.id}">
+        <span class="gravity-val" id="gravval-${cfg.id}">${grav}</span>
+        <label class="toggle" style="flex-shrink:0;margin-left:6px">
+          <input type="checkbox" ${fluct ? 'checked' : ''} data-fluct="${cfg.id}">
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+        <span class="gravity-rand">Random</span>
+      </div>` : ''}`;
+    container.appendChild(row);
+  });
+
+  if (hasDeleted) {
+    const restoreRow = document.createElement('div');
+    restoreRow.style.cssText = 'text-align:center;padding:12px 0 4px';
+    restoreRow.innerHTML = `<button onclick="restoreAll()" style="background:#1e1e1e;border:1px solid #2a2a2a;border-radius:10px;color:#888;font-size:13px;padding:8px 18px;cursor:pointer">Restore deleted</button>`;
+    container.appendChild(restoreRow);
+  }
+
+  container.querySelectorAll('input[type=checkbox]').forEach(chk => {
+    chk.addEventListener('change', () => {
+      const id = chk.dataset.id;
+      const s = loadSettings();
+      if (!s[id]) s[id] = {};
+      s[id].enabled = chk.checked;
+      saveSettings(s);
+      chk.closest('.settings-row').querySelector('.settings-row-sub').textContent =
+        chk.checked ? 'Active' : 'Hidden';
+      syncField();
+    });
+  });
+
+  container.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', () => deleteBubble(btn.dataset.del));
+  });
+
+  container.querySelectorAll('input[type=range][data-grav]').forEach(slider => {
+    slider.addEventListener('input', () => {
+      const id = slider.dataset.grav;
+      const val = +slider.value;
+      document.getElementById('gravval-' + id).textContent = val;
+      const s = loadSettings();
+      if (!s[id]) s[id] = {};
+      s[id].gravity = val;
+      saveSettings(s);
+      const body = bodies.find(b => b.id === id);
+      if (body) body.buoy = val / 50;
+    });
+  });
+
+  container.querySelectorAll('input[type=checkbox][data-fluct]').forEach(chk => {
+    chk.addEventListener('change', () => {
+      const id = chk.dataset.fluct;
+      const s = loadSettings();
+      if (!s[id]) s[id] = {};
+      s[id].fluctuate = chk.checked;
+      saveSettings(s);
+      const body = bodies.find(b => b.id === id);
+      if (body) body.fluctuate = chk.checked;
+    });
+  });
+}
+
+// ── Bubble element factory ──
+function makeBubbleEl(cfg) {
+  const photo = localStorage.getItem(PHOTO_KEY);
+  const el = document.createElement('div');
+  el.className = 'bubble';
+  el.style.width  = cfg.size + 'px';
+  el.style.height = cfg.size + 'px';
+  el.style.background = `
+    radial-gradient(circle at 30% 30%, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.16) 25%, rgba(255,255,255,0.05) 55%, transparent 100%),
+    radial-gradient(circle, ${cfg.color}28 0%, ${cfg.color}18 50%, ${cfg.color}08 100%)
+  `;
+  el.style.backdropFilter = 'blur(10px) brightness(1.15)';
+  el.style.webkitBackdropFilter = 'blur(10px) brightness(1.15)';
+  el.style.boxShadow = `
+    inset 0 0 ${cfg.size * 0.12}px rgba(255,255,255,0.22),
+    inset 0 0 0 1px rgba(255,255,255,0.10),
+    0 ${cfg.size * 0.04}px ${cfg.size * 0.14}px rgba(0,0,0,0.18)
+  `;
+
+  const inner = document.createElement('div');
+  inner.className = 'bubble-inner';
+  el.appendChild(inner);
+
+  const content = document.createElement('div');
+  content.className = 'bubble-content';
+  content.id = 'content-' + cfg.id;
+
+  if (cfg.id === 'call') {
+    content.innerHTML = `
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2Z"/></svg>
+      <span>Call Papa</span>`;
+  } else if (cfg.id === 'florence') {
+    content.innerHTML = `
+      <svg width="38" height="38" viewBox="0 0 24 24" fill="white"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2Z"/></svg>
+      <span>Call Florence</span>`;
+  } else if (cfg.id === 'camera') {
+    content.innerHTML = `<svg width="34" height="34" viewBox="0 0 24 24" fill="white"><path d="M12 15.2A3.2 3.2 0 1 1 15.2 12 3.2 3.2 0 0 1 12 15.2ZM20 4h-3.17L15 2H9L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"/></svg>`;
+  } else if (cfg.id === 'thumb') {
+    if (photo) {
+      const img = document.createElement('img');
+      img.src = photo;
+      img.style.cssText = `width:${cfg.size*0.65}px;height:${cfg.size*0.65}px`;
+      content.appendChild(img);
+    } else {
+      content.innerHTML = `<svg width="34" height="34" viewBox="0 0 24 24" fill="white"><path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM5 17l3.5-4.5 2.5 3.01L14.5 11 19 17H5Z"/></svg>`;
+    }
+  } else {
+    const sz = Math.min(34, cfg.size * 0.35);
+    if (cfg.action === 'image' && cfg.imageData) {
+      const imgSz = Math.round(cfg.size * 0.62);
+      content.innerHTML = `<img src="${cfg.imageData}" style="width:${imgSz}px;height:${imgSz}px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.55)"><span>${cfg.label}</span>`;
+    } else {
+      content.innerHTML = `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="white">${actionIcon(cfg.action)}</svg><span>${cfg.label}</span>`;
+    }
+  }
+
+  el.appendChild(content);
+  return el;
+}
+
+// ── Drag + tap handler ──
+function attachHandlers(el, id) {
+  let startX, startY, moved = false;
+
+  function onStart(cx, cy) {
+    startX = cx; startY = cy; moved = false;
+    const body = bodies.find(b => b.id === id);
+    if (!body) return;
+    dragState = { id, body, ox: cx - body.x, oy: cy - body.y, lastX: cx, lastY: cy, velX: 0, velY: 0 };
+    body.dragging = true;
+  }
+  function onMove(cx, cy) {
+    if (!dragState || dragState.id !== id) return;
+    const dx = cx - startX, dy = cy - startY;
+    if (!moved && Math.sqrt(dx*dx + dy*dy) > DRAG_THRESHOLD) moved = true;
+    if (moved) {
+      dragState.body.x = cx - dragState.ox;
+      dragState.body.y = cy - dragState.oy;
+      dragState.velX = cx - dragState.lastX;
+      dragState.velY = cy - dragState.lastY;
+      dragState.lastX = cx;
+      dragState.lastY = cy;
+    }
+  }
+  function onEnd() {
+    if (!dragState || dragState.id !== id) return;
+    const wasMoved = moved;
+    dragState.body.dragging = false;
+    if (wasMoved) {
+      dragState.body.vx = Math.max(-8, Math.min(8, dragState.velX));
+      dragState.body.vy = Math.max(-8, Math.min(8, dragState.velY));
+    }
+    dragState = null;
+    if (!wasMoved) onTap(id);
+  }
+
+  el.addEventListener('touchstart',  e => { e.preventDefault(); onStart(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+  el.addEventListener('touchmove',   e => { e.preventDefault(); onMove(e.touches[0].clientX, e.touches[0].clientY); },  { passive: false });
+  el.addEventListener('touchend',    e => { e.preventDefault(); onEnd(); });
+  el.addEventListener('mousedown',   e => onStart(e.clientX, e.clientY));
+  el.addEventListener('mousemove',   e => onMove(e.clientX, e.clientY));
+  el.addEventListener('mouseup',     e => onEnd());
+  el.addEventListener('mouseleave',  e => { if (dragState?.id === id) onEnd(); });
+}
+
+// ── Field sync ──
+function syncField() {
+  const field = document.getElementById('field');
+  CFGS.forEach(cfg => {
+    const on = isBubbleEnabled(cfg.id);
+    const exists = !!els[cfg.id];
+    if (on && !exists) {
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const r = cfg.size / 2;
+      const body = { ...cfg, x: r + 20 + Math.random() * (vw - cfg.size - 40), y: vh * 0.5, vx: 0, vy: -1 };
+      bodies.push(body);
+      const el = makeBubbleEl(cfg);
+      el.style.transform = `translate(${body.x - r}px,${body.y - r}px)`;
+      attachHandlers(el, cfg.id);
+      field.appendChild(el);
+      els[cfg.id] = el;
+    } else if (!on && exists) {
+      const idx = bodies.findIndex(b => b.id === cfg.id);
+      if (idx !== -1) bodies.splice(idx, 1);
+      els[cfg.id].remove();
+      delete els[cfg.id];
+    }
+  });
+}
+
+// ── Spawn helper (for add-bubble) ──
+function spawnBubble(cfg) {
+  const field = document.getElementById('field');
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const r = cfg.size / 2;
+  const body = { ...cfg, buoy: getGravity(cfg.id) / 50, fluctuate: isFluctuating(cfg.id), x: r + 20 + Math.random() * (vw - cfg.size - 40), y: vh * 0.5, vx: 0, vy: -1 };
+  bodies.push(body);
+  const el = makeBubbleEl(cfg);
+  el.style.transform = `translate(${body.x - r}px,${body.y - r}px)`;
+  attachHandlers(el, cfg.id);
+  field.appendChild(el);
+  els[cfg.id] = el;
+}
+
+const bodies = [];
+const els    = {};
+
+// ── Init bodies ──
+function initBodies() {
+  getCustomBubbles().forEach(c => {
+    if (!CFGS.find(x => x.id === c.id)) CFGS.push(c);
+  });
+  const vw = window.innerWidth, vh = window.innerHeight;
+  CFGS.forEach(c => {
+    if (!isBubbleEnabled(c.id)) return;
+    const r = c.size / 2;
+    bodies.push({
+      ...c,
+      buoy: getGravity(c.id) / 50,
+      fluctuate: isFluctuating(c.id),
+      x: r + 20 + Math.random() * Math.max(10, vw - c.size - 40),
+      y: vh * 0.35 + Math.random() * (vh * 0.45),
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: 0,
+    });
+  });
+}
+
+// ── Build DOM ──
+function buildField() {
+  const field = document.getElementById('field');
+  bodies.forEach(b => {
+    if (!isBubbleEnabled(b.id)) return;
+    const el = makeBubbleEl(b);
+    el.style.transform = `translate(${b.x - b.size/2}px,${b.y - b.size/2}px)`;
+    attachHandlers(el, b.id);
+    field.appendChild(el);
+    els[b.id] = el;
+  });
+}
+
+function onTap(id) {
+  try { navigator.vibrate([30]); } catch(_) {}
+  if (id === 'call') {
+    window.location.href = 'https://wa.me/447572870070';
+  } else if (id === 'florence') {
+    window.location.href = 'https://wa.me/447000000000';
+  } else if (id === 'camera') {
+    document.getElementById('cameraInput').click();
+  } else if (id === 'thumb') {
+    const photo = localStorage.getItem(PHOTO_KEY);
+    if (!photo) return;
+    document.getElementById('fullImg').src = photo;
+    document.getElementById('photoOverlay').classList.add('active');
+  } else {
+    const cfg = CFGS.find(c => c.id === id);
+    if (!cfg) return;
+    const act = cfg.action || 'whatsapp';
+    if (act === 'whatsapp' && cfg.number) window.location.href = 'https://wa.me/' + cfg.number;
+    else if (act === 'image') {
+      const src = cfg.imageData || cfg.url;
+      if (src) { document.getElementById('fullImg').src = src; document.getElementById('photoOverlay').classList.add('active'); }
+    }
+    else if (act === 'video' && cfg.url) window.open(cfg.url, '_blank');
+    else if (act === 'camera') document.getElementById('cameraInput').click();
+    else if (act === 'pdf' && cfg.url) window.open(cfg.url, '_blank');
+    else if (cfg.number) window.location.href = 'https://wa.me/' + cfg.number;
+  }
+}
+
+document.getElementById('cameraInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    const url = reader.result;
+    localStorage.setItem(PHOTO_KEY, url);
+    const b = bodies.find(b => b.id === 'thumb');
+    const content = document.getElementById('content-thumb');
+    content.innerHTML = '';
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = `width:${b.size*0.65}px;height:${b.size*0.65}px`;
+    content.appendChild(img);
+    try { navigator.vibrate([30]); } catch(_) {}
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+});
+
+// ── Add bubble form ──
+function initAddForm() {
+  const labelInput = document.getElementById('addLabel');
+  const typeSelect = document.getElementById('addType');
+  const detailWrap = document.getElementById('addDetailWrap');
+  const addBtn     = document.getElementById('addBubbleBtn');
+
+  const TYPE_CFG = {
+    whatsapp: { kind: 'text', type: 'tel', placeholder: 'WhatsApp number (e.g. 447700000000)', ok: v => /^\d{7,15}$/.test(v) },
+    image:    { kind: 'file' },
+    video:    { kind: 'text', type: 'url', placeholder: 'Video URL (https://...)',              ok: v => /^https?:\/\/.+/.test(v) },
+    camera:   { kind: 'none' },
+    pdf:      { kind: 'text', type: 'url', placeholder: 'Link to PDF / file / playlist (https://...)', ok: v => /^https?:\/\/.+/.test(v) },
+  };
+
+  let pendingImageData = null;
+
+  function getDetail() { return detailWrap.querySelector('input[type=tel],input[type=url]'); }
+
+  function validate() {
+    const tc = TYPE_CFG[typeSelect.value];
+    const label = labelInput.value.trim();
+    if (!label || !tc) { addBtn.disabled = true; return; }
+    if (tc.kind === 'file') { addBtn.disabled = !pendingImageData; return; }
+    const d = getDetail();
+    addBtn.disabled = !(tc.kind === 'none' ? true : (d && tc.ok(d.value.trim())));
+  }
+
+  typeSelect.onchange = () => {
+    const tc = TYPE_CFG[typeSelect.value];
+    if (!tc) return;
+    pendingImageData = null;
+    if (tc.kind === 'text') {
+      detailWrap.style.display = '';
+      detailWrap.innerHTML = `<input type="${tc.type}" placeholder="${tc.placeholder}" style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:10px;color:#f5f5f5;font-size:14px;padding:10px 12px;outline:none;font-family:inherit;width:100%">`;
+      getDetail().oninput = validate;
+    } else if (tc.kind === 'file') {
+      detailWrap.style.display = '';
+      detailWrap.innerHTML = `
+        <label style="display:block;cursor:pointer">
+          <input type="file" accept="image/*" style="display:none" id="addImagePicker">
+          <div id="addImagePlaceholder" style="border:1px dashed #2a2a2a;border-radius:10px;padding:22px;text-align:center;color:#555;font-size:14px">
+            📷  Tap to choose photo or use camera
+          </div>
+          <img id="addImagePreview" style="display:none;border-radius:10px;max-height:140px;object-fit:cover;width:100%">
+        </label>`;
+      document.getElementById('addImagePicker').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          pendingImageData = reader.result;
+          document.getElementById('addImagePlaceholder').style.display = 'none';
+          const prev = document.getElementById('addImagePreview');
+          prev.src = pendingImageData;
+          prev.style.display = 'block';
+          validate();
+        };
+        reader.readAsDataURL(file);
+      });
+    } else {
+      detailWrap.style.display = 'none';
+      detailWrap.innerHTML = '';
+    }
+    validate();
+  };
+  labelInput.oninput = validate;
+
+  addBtn.onclick = () => {
+    const label = labelInput.value.trim();
+    const action = typeSelect.value;
+    const tc = TYPE_CFG[action];
+    if (!label || !tc) return;
+    const d = getDetail();
+    const detailVal = d ? d.value.trim() : '';
+
+    const id = 'custom_' + Date.now();
+    const palette = ['#e8253d','#a855f7','#3c9eb9','#da256a','#f59e0b','#10b981'];
+    const color = palette[Math.floor(Math.random() * palette.length)];
+    const cfg = { id, label, action, size: 130, color, buoy: 1.3 };
+    if (action === 'whatsapp') cfg.number = detailVal;
+    else if (action === 'image' && pendingImageData) cfg.imageData = pendingImageData;
+    else if (detailVal) cfg.url = detailVal;
+
+    const customs = getCustomBubbles();
+    customs.push(cfg);
+    saveCustomBubbles(customs);
+    CFGS.push(cfg);
+    spawnBubble(cfg);
+    buildToggles();
+
+    labelInput.value = '';
+    typeSelect.value = '';
+    detailWrap.style.display = 'none';
+    detailWrap.innerHTML = '';
+    pendingImageData = null;
+    addBtn.disabled = true;
+    try { navigator.vibrate([30]); } catch(_) {}
+  };
+}
+
+// ── Physics loop ──
+function step() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const floor = vh - 90;
+
+  bodies.forEach(b => {
+    if (b.dragging) return;
+    if (b.fluctuate) {
+      b.buoy += (Math.random() - 0.5) * 0.06;
+      b.buoy = Math.max(0, Math.min(2, b.buoy));
+    }
+    b.vy -= b.buoy * 0.0028;
+    b.vy *= DAMPING;
+    b.vx *= DAMPING;
+    b.vx += (Math.random() - 0.5) * 0.025;
+    b.x  += b.vx;
+    b.y  += b.vy;
+
+    const r = b.size / 2;
+    if (b.y - r < CEIL)     { b.y = CEIL + r;    b.vy *= -COL_DAMP; }
+    if (b.y + r > floor)    { b.y = floor - r;   b.vy *= -COL_DAMP; }
+    if (b.x - r < 6)        { b.x = 6 + r;       b.vx *= -COL_DAMP; }
+    if (b.x + r > vw - 6)   { b.x = vw - 6 - r; b.vx *= -COL_DAMP; }
+  });
+
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const a = bodies[i], b = bodies[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 0.001;
+      const min  = (a.size + b.size) / 2 + 3;
+      if (dist < min) {
+        const ov = min - dist;
+        const nx = dx/dist, ny = dy/dist;
+        if (a.dragging) {
+          b.x += nx*ov; b.y += ny*ov;
+          b.vx += nx*ov*0.4; b.vy += ny*ov*0.4;
+        } else if (b.dragging) {
+          a.x -= nx*ov; a.y -= ny*ov;
+          a.vx -= nx*ov*0.4; a.vy -= ny*ov*0.4;
+        } else {
+          const half = ov / 2;
+          a.x -= nx*half; a.y -= ny*half;
+          b.x += nx*half; b.y += ny*half;
+          const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
+          const rel = rvx*nx + rvy*ny;
+          if (rel < 0) {
+            const imp = rel * COL_DAMP;
+            a.vx += imp*nx; a.vy += imp*ny;
+            b.vx -= imp*nx; b.vy -= imp*ny;
+          }
+        }
+      }
+    }
+  }
+
+  bodies.forEach(b => {
+    const el = els[b.id];
+    if (el) el.style.transform = `translate(${(b.x - b.size/2).toFixed(1)}px,${(b.y - b.size/2).toFixed(1)}px)`;
+  });
+
+  requestAnimationFrame(step);
+}
+
+initBodies();
+buildField();
+buildToggles();
+initAddForm();
+requestAnimationFrame(step);
+</script>
+</body>
+</html>
