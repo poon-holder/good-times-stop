@@ -199,6 +199,23 @@
     color: white; font-size: 22px;
     display: flex; align-items: center; justify-content: center; cursor: pointer;
   }
+
+  #videoOverlay {
+    display: none; position: fixed; inset: 0;
+    background: #000; z-index: 9999; flex-direction: column;
+  }
+  #videoOverlay.active { display: flex; }
+  #videoContainer { flex: 1; position: relative; }
+  #videoContainer iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: none; }
+  #closeVideo {
+    position: absolute;
+    top: calc(env(safe-area-inset-top) + 14px);
+    right: calc(env(safe-area-inset-right) + 14px);
+    width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.2);
+    color: white; font-size: 20px; cursor: pointer; z-index: 10000;
+    display: flex; align-items: center; justify-content: center;
+  }
 </style>
 </head>
 <body>
@@ -264,6 +281,11 @@
 <div id="photoOverlay">
   <img id="fullImg" src="" alt="">
   <button id="closePhoto" onclick="document.getElementById('photoOverlay').classList.remove('active')">✕</button>
+</div>
+
+<div id="videoOverlay">
+  <div id="videoContainer"></div>
+  <button id="closeVideo" onclick="closeVideoOverlay()">✕</button>
 </div>
 
 <script>
@@ -339,6 +361,64 @@ function isFluctuating(id) {
 
 function openSettings()  { document.getElementById('settingsPanel').classList.add('open'); }
 function closeSettings() { document.getElementById('settingsPanel').classList.remove('open'); }
+
+// ── YouTube ──
+function extractYouTubeId(url) {
+  const m = (url || '').match(/(?:youtu\.be\/|[?&]v=|\/embed\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+let ytApiReady = false;
+let ytPendingInit = null;
+let ytPlayer = null;
+
+window.onYouTubeIframeAPIReady = function() {
+  ytApiReady = true;
+  if (ytPendingInit) { ytPendingInit(); ytPendingInit = null; }
+};
+
+function loadYouTubeAPI() {
+  if (ytApiReady || document.querySelector('script[src*="youtube.com/iframe_api"]')) return;
+  const tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+}
+
+function openVideoOverlay(url) {
+  const videoId = extractYouTubeId(url);
+  if (!videoId) return;
+  const overlay   = document.getElementById('videoOverlay');
+  const container = document.getElementById('videoContainer');
+  container.innerHTML = '<div id="ytPlayerEl" style="width:100%;height:100%"></div>';
+  overlay.classList.add('active');
+
+  function createPlayer() {
+    if (ytPlayer) { try { ytPlayer.destroy(); } catch(_) {} ytPlayer = null; }
+    ytPlayer = new YT.Player('ytPlayerEl', {
+      width: '100%', height: '100%',
+      videoId,
+      playerVars: {
+        autoplay: 1, mute: 1, controls: 0, fs: 0,
+        rel: 0, playsinline: 1, enablejsapi: 1,
+        iv_load_policy: 3, modestbranding: 1, disablekb: 1,
+        origin: window.location.origin || 'https://good-times-stop.vercel.app',
+      },
+      events: {
+        onReady: e => { e.target.unMute(); e.target.setVolume(25); },
+        onStateChange: e => { if (e.data === YT.PlayerState.ENDED) closeVideoOverlay(); },
+      },
+    });
+  }
+
+  if (ytApiReady) { createPlayer(); }
+  else { ytPendingInit = createPlayer; loadYouTubeAPI(); }
+}
+
+function closeVideoOverlay() {
+  document.getElementById('videoOverlay').classList.remove('active');
+  if (ytPlayer) { try { ytPlayer.destroy(); } catch(_) {} ytPlayer = null; }
+  document.getElementById('videoContainer').innerHTML = '';
+}
 
 function actionIcon(action) {
   if (action === 'image')  return '<path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM5 17l3.5-4.5 2.5 3.01L14.5 11 19 17H5Z"/>';
@@ -509,6 +589,21 @@ function makeBubbleEl(cfg) {
     if (cfg.action === 'image' && cfg.imageData) {
       const imgSz = Math.round(cfg.size * 0.62);
       content.innerHTML = `<img src="${cfg.imageData}" style="width:${imgSz}px;height:${imgSz}px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.55)"><span>${cfg.label}</span>`;
+    } else if (cfg.action === 'video' && cfg.url) {
+      const videoId = extractYouTubeId(cfg.url);
+      const thumbSz = Math.round(cfg.size * 0.62);
+      if (videoId) {
+        content.innerHTML = `
+          <div style="position:relative;width:${thumbSz}px;height:${thumbSz}px;border-radius:50%;overflow:hidden;border:2px solid rgba(255,255,255,0.55)">
+            <img src="https://img.youtube.com/vi/${videoId}/hqdefault.jpg" style="width:100%;height:100%;object-fit:cover">
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.2)">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="white" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6))"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </div>
+          </div>
+          <span>${cfg.label}</span>`;
+      } else {
+        content.innerHTML = `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="white">${actionIcon(cfg.action)}</svg><span>${cfg.label}</span>`;
+      }
     } else {
       content.innerHTML = `<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="white">${actionIcon(cfg.action)}</svg><span>${cfg.label}</span>`;
     }
@@ -661,7 +756,7 @@ function onTap(id) {
       const src = cfg.imageData || cfg.url;
       if (src) { document.getElementById('fullImg').src = src; document.getElementById('photoOverlay').classList.add('active'); }
     }
-    else if (act === 'video' && cfg.url) window.open(cfg.url, '_blank');
+    else if (act === 'video' && cfg.url) openVideoOverlay(cfg.url);
     else if (act === 'camera') document.getElementById('cameraInput').click();
     else if (act === 'pdf' && cfg.url) window.open(cfg.url, '_blank');
     else if (cfg.number) window.location.href = 'https://wa.me/' + cfg.number;
@@ -857,6 +952,7 @@ initBodies();
 buildField();
 buildToggles();
 initAddForm();
+loadYouTubeAPI();
 requestAnimationFrame(step);
 </script>
 </body>
